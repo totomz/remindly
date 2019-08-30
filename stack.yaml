@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Stack for remindly
+Metadata:
+  aws:
+    region: eu-west-1
+    capabilities: CAPABILITY_IAM
+    isTemplate: true
+    template:
+      name: totomz-{{stages.0.name}}-remindly
+      stage: "{{stages.0.name}}"
+
+Parameters:
+  Stage:
+    Type: String
+    Default: "{{stage}}"
+
+Conditions:
+  IsGammaOrProd: !Or [!Equals [ !Ref Stage, prod ], !Equals [ !Ref Stage, gamma ]]
+
+Resources:
+
+  SnsMailer:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: totomz-sns-bomba
+
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    DependsOn: [SnsMailer]
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: vhostLog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - logs:*
+                Resource: arn:aws:logs:*:*:*
+                Effect: Allow
+        - PolicyName: sns_publish
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - sns:Publish
+                Resource: !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${SnsMailer.TopicName}"
+                Effect: Allow
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          module.exports.awslambda = (event, context, callback) => {
+            callback(null, { message: 'Hello, world!', event });
+          };
+      Description: no-desc
+      Environment:
+        Variables:
+          STAGE: {{stage}}
+      FunctionName: "totomz-{{stage}}-remindly"
+      Handler: index.awslambda
+      MemorySize: 128
+      Runtime: nodejs8.10
+      Timeout: 60
+      Role: !GetAtt FunctionRole.Arn
+  FunctionAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref Function
+      FunctionVersion: !GetAtt FunctionVersion.Version
+      Name: "{{stage}}"
+  FunctionVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref Function
+      Description: The first deployment
+
+
+  CronSendEmail:
+    Type: AWS::Events::Rule
+    DependsOn: [Function, FunctionRole]
+    Properties:
+      Name: !Ref Function
+      Description: "Send a remainder email for tasks to do"
+#      ScheduleExpression: "cron(30 19 * * ? *)"  # UTC, 20h30 CEST
+      ScheduleExpression: "cron(0 8,12,21 * * ? *)"
+      #      ScheduleExpression: "rate(2 minutes)"
+      State: ENABLED
+      RoleArn: !GetAtt FunctionRole.Arn
+      Targets:
+        - Id: "{{stage}}-remindly"
+          Arn: !GetAtt Function.Arn
+
+  CronSendEmailPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt CronSendEmail.Arn

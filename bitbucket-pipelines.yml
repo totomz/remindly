@@ -1,0 +1,56 @@
+image: myideas/lambda-build
+options:
+  max-time: 5
+pipelines:
+  default:
+    - step:
+        name: Build and Test
+        caches:
+          - node
+        script:
+          - echo "STAGE=gamma" > .env
+          - npm install
+          - npm run build
+          - npm test
+          - npm run test:integ
+  branches:
+    master:
+      - step:
+          name: Build and Test
+          caches:
+            - node
+          script:
+            - echo "STAGE=gamma" > .env
+            - npm install
+            - npm run build
+            - npm test
+            - npm run test:integ
+          artifacts:
+            - dist/**
+      - step:
+          name: Deploy Gamma
+          deployment: staging
+          script:
+            - npm install --only=production
+            - touch turbodeploy.nocompile
+            - turbodeploy update gamma
+      - step:
+          name: Smoke Test
+          caches:
+            - node
+          script:
+            - echo "STAGE=gamma" > .env
+            - npm install
+            - npm run build
+            - npm run test:e2e
+          artifacts:
+            - dist/**
+      - step:
+          name: Deploy Production
+          deployment: production
+          caches:
+            - node
+          script:
+            - npm install --only=production
+            - touch turbodeploy.nocompile
+            - turbodeploy update prod
