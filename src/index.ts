@@ -3,9 +3,10 @@ import container from "./inversify.config";
 import { Trello } from "./lib/Trello";
 import TYPES from "./TYPES";
 import { Logger } from "./lib/Logger";
-import { SNS } from 'aws-sdk';
+import { SES } from 'aws-sdk';
 import { Config } from "./Config";
-import { PublishInput } from "aws-sdk/clients/sns";
+import { SendEmailRequest } from "aws-sdk/clients/ses";
+
 
 
 
@@ -17,25 +18,33 @@ export function awslambda(event, context, callback) {
 
     log.info("Retrieving cards");
 
-    const sns = new SNS();
+    const ses = new SES();
 
     trello.getCards().then(cards => {
-        const requests = cards.map(card => {
-            return sns.publish({
-                TopicArn: config.snsTargetArn(),
-                Message: `Ciao! Dovresti fare: ${card.name}`
-            } as PublishInput ).promise();
-        });
+        let tasks = cards.map(c => {
+            return `<li>${c.name}</li>`;
+        }).join('');
+        tasks = `<ul>${tasks}</ul>`;
 
-        return Promise.all(requests)
-            .then(res => {
-                return callback(undefined, "ok");
-            })
-            .catch(err => {
-                log.error("Error", err);
-                return callback(err);
-            });
+        return ses.sendEmail({
+            Destination: { ToAddresses: ['tommaso.doninelli@gmail.com'] },
+            Source: 'remindly@my-ideas.it',
+            Message: {
+                Subject: {
+                    Charset: "UTF-8",
+                    Data: "Remindly"
+                },
+                Body: {
+                    Html: {
+                        Charset: "UTF-8",
+                        Data: `<p>Hey man! You have stuff to do!</p>${tasks}`
+                    }
+                }
+            }
+
+        } as SendEmailRequest).promise();
     });
+
         
 }
 

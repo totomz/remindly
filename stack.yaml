@@ -57,6 +57,14 @@ Resources:
                   - sns:Publish
                 Resource: !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${SnsMailer.TopicName}"
                 Effect: Allow
+        - PolicyName: send_email
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - ses:SendEmail
+                Resource: '*'
+                Effect: Allow
   Function:
     Type: AWS::Lambda::Function
     Properties:
@@ -69,6 +77,9 @@ Resources:
       Environment:
         Variables:
           STAGE: {{stage}}
+          TRELLO_API_KEY: "xxx"
+          TRELLO_API_TOKEN: "xxx"
+          TRELLO_BOARD: "xxx"
       FunctionName: "totomz-{{stage}}-remindly"
       Handler: index.awslambda
       MemorySize: 128
